@@ -1,0 +1,43 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "tlsrpt"
+version = "0.0.1"
+authors = [
+  { name="sys4 AG", email="info@sys4.de" },
+  { name="Boris Lohner", email="bl@sys4.de"},
+]
+description = "Receiver, fetcher and reporter software for SMTP TLS reporting (TLSRPT)"
+readme = "README.md"
+requires-python = ">=3.7"
+license = "GPL-3.0-or-later"
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: GNU Lesser General Public License v3 or later (LGPLv3+)",
+    "Operating System :: OS Independent",
+]
+dependencies = [
+]
+
+[project.optional-dependencies]
+test = [
+  "tox",
+]
+# lint = [
+#  "flake8",
+# ]
+
+[project.urls]
+"Homepage" = "https://github.com/sys4/tlsrpt"
+"Bug Tracker" = "https://github.com/sys4/tlsrpt/issues"
+
+# [project.scripts]
+# search = "tlsrpt_policy.cli:app"
+
+[tool.hatch.build]
+only-packages = false
+
+[tool.hatch.build.targets.wheel]
+packages = ["sys4-tlsrpt/tlsrpt"]
