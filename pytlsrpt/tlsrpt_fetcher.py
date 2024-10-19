@@ -17,7 +17,7 @@
 #    If not, see <http://www.gnu.org/licenses/>.
 #
 
-import tlsrpt
+from pytlsrpt import tlsrpt
 
 if __name__ == '__main__':
     tlsrpt.tlsrpt_fetcher_main()
