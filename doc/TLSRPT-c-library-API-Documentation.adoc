@@ -1,244 +1,430 @@
-:sectnums:
+= TLSRPT for MTAs: API documentation of the C library
+:doctype: article
+:keywords:
+:author: Boris Lohner
+:email: bl@sys4.de
+:subject: TLSRPT c-Library Examples
+:revnumber: 0.1
+:revdate: 2024-09-29
+:version: 0.5.0-pre20240929
+:copyright: (C) sys4 AG
+:publisher: sys4 AG
+:lang: en
+:hyphens: en
+:encoding: UTF-8
+:pdf-version: 1.7
+:title-page:
 :toc:
 :toclevels: 4
+:sectnums:
 :sectnumlevels: 4
-:title-page:
+:pagenums:
+:icons: font
+:source-highlighter: rouge
+:rouge-style: base16.solarized.dark
 
-= TLSRPT for MTAs - API documentation of the C library
-Version 0.5.0-pre20240929
-2024-09-29
+
+<<<
 
 == Error handling
 
-The TLSRPT C library API functions return a special integer errorcode described in this chapter, except for some library control and assistence functions.
+TLSRPT C library API functions return a special integer errorcode described in
+this chapter, except for some library control and assistence functions.
 
 On success the return value is 0.
 
 The error codes are grouped in different number blocks.
 
-Errors resulting from system calls or calls to standard libc functions usually set the `errno` variable to give information about the exact error.
-The TLSRPT C library functions add this value of `errno` to a constant denoting the system call or standard libc function and the TLSRPT library function the error occured in to give fine-granular error indicators.
-These returned error codes are purely for informative purpose in log files.
+Errors resulting from system calls or calls to standard libc functions usually
+set the `errno` variable to give information about the exact error. The TLSRPT
+C library functions add this value of `errno` to a constant denoting the system
+call or standard libc function and the TLSRPT library function the error
+occured in to give fine-granular error indicators. These returned error codes
+are purely for informative purpose in log files.
 
-The `errno` value part can be extracted with the `tlsrpt_errno_from_error_code` function to get the description of the actual error via `strerror` from libc.
-The `tlsrpt_strerror` function describes the internal error or in case of a libc error describes the function call that led to the error.
+The `errno` value part can be extracted with the `tlsrpt_errno_from_error_code`
+function to get the description of the actual error via `strerror` from libc.
+The `tlsrpt_strerror` function describes the internal error or in case of a
+libc error describes the function call that led to the error.
 
-In case of a failure within the library itself, for example due to a missing call to start a policy, the returned error code is from the TLSRPT_ERR_TLSRPT block.
-The `tlsrpt_error_code_is_internal` function can be used to distinguish between internal errors and errors from libc.
+In case of a failure within the library itself, for example due to a missing
+call to start a policy, the returned error code is from the TLSRPT_ERR_TLSRPT
+block. The `tlsrpt_error_code_is_internal` function can be used to distinguish
+between internal errors and errors from libc.
 
-After an error occured, that delivery request cannot be recovered again and won´t be sent out.
+After an error occured, that delivery request cannot be recovered again and
+won´t be sent out.
 
-In case of an error within a delivery request it is still mandatory to clean up by a call to `tlsrpt_finish_delivery_request` or `tlsrpt_cancel_delivery_request`, with the exception of `tlsrpt_init_delivery_request` which on error yields a `NULL` pointer instead of a pointer to an initialized `struct tlsrpt_dr`.
+In case of an error within a delivery request it is still mandatory to clean up
+by a call to `tlsrpt_finish_delivery_request` or
+`tlsrpt_cancel_delivery_request`, with the exception of
+`tlsrpt_init_delivery_request` which on error yields a `NULL` pointer instead
+of a pointer to an initialized `struct tlsrpt_dr`.
 
-If an error occurs after a successful call to `tlsrpt_init_delivery_request` it is safe to just keep on processing in case of errors until the final call to either `tlsrpt_finish_delivery_request` or `tlsrpt_cancel_delivery_request`.
-No data will be reported to the TLSRPT collectd due to the errors occured.
+If an error occurs after a successful call to `tlsrpt_init_delivery_request` it
+is safe to just keep on processing in case of errors until the final call to
+either `tlsrpt_finish_delivery_request` or `tlsrpt_cancel_delivery_request`. No
+data will be reported to the TLSRPT collectd due to the errors occured.
 
+<<<
 
 == API functions
-The API functions are layered and the functions that initialize and finish objects must always be called properly paired.
 
-On the outermost layer, failing to properly pair calls to `tlsrpt_open` and `tlsrpt_close` will leak ressources like an open socket file descriptor.
+API functions are layered and the functions that initialize and finish objects
+must always be called properly paired.
 
-Failing to properly pair calls to `tlsrpt_init_delivery_request` with either `tlsrpt_finish_delivery_request` or `tlsrpt_cancel_delivery_request` will result in memory leaks.
+On the outermost layer, failing to properly pair calls to `tlsrpt_open` and
+`tlsrpt_close` will leak ressources like an open socket file descriptor.
 
-Within a delivery request, failing to properly pair calls to `tlsrpt_init_policy` and `tlsrpt_finish_policy` will result in memory leaks.
+Failing to properly pair calls to `tlsrpt_init_delivery_request` with either
+`tlsrpt_finish_delivery_request` or `tlsrpt_cancel_delivery_request` will
+result in memory leaks.
 
+Within a delivery request, failing to properly pair calls to
+`tlsrpt_init_policy` and `tlsrpt_finish_policy` will result in memory leaks.
+
+
+
+<<<
 
 === Connection handling
 
-The `struct tlsrpt_connection_t` object contains a socket and the destination socket address of the TLSRPT collectd.
-It can be opened and close individually for a single delivery request, or it can be opened once at program start and re-used for many even concurrent delivery requests.
+The `struct tlsrpt_connection_t` object contains a socket and the destination
+socket address of the TLSRPT collectd. It can be opened and close individually
+for a single delivery request, or it can be opened once at program start and
+re-used for many even concurrent delivery requests.
 
-Calls to `tlsrpt_open` and `tlsrpt_close` should be properly paired to avoid ressource leaks.
+Calls to `tlsrpt_open` and `tlsrpt_close` should be properly paired to avoid
+ressource leaks.
+
 
 ==== `tlsrpt_open`
-Parameters:::
- struct tlsrpt_connection_t** pcon::  Address of the pointer that will point to the connection object
- const char* socketname:: The name of the TLSRPT collectd socket accepting datagrams from this library
 
-The function `tlsrpt_open` allocates and initializes the `struct tlsrpt_connection_t` object.
-This function creates the socket and initializes the destination socket address of the TLSRPT collectd.
-There is no actual connection internally, the socket is a connection-less datagram socket.
+The function `tlsrpt_open` allocates and initializes the `struct
+tlsrpt_connection_t` object. This function creates the socket and initializes
+the destination socket address of the TLSRPT collectd. There is no actual
+connection internally, the socket is a connection-less datagram socket.
+
+.Parameters
+struct tlsrpt_connection_t** pcon::
+    Address of the pointer that will point to the connection object
+const char* socketname::
+    The name of the TLSRPT collectd socket accepting datagrams from this library
+
 
 ==== `tlsrpt_close`
-Parameters:::
- struct tlsrpt_connection_t** pcon::  Address of the pointer pointing to the connection object to be closed
 
-The function `tlsrpt_close` closes the tlsrpt_connetion_t object.
-`tlsrpt_close` closes the socket, resets the destination socket address to all zero bytes, deallocates the `struct tlsrpt_connection_t` and sets *pcon to `NULL`.
+The function `tlsrpt_close` closes the `tlsrpt_connetion_t` object.
+`tlsrpt_close` closes the socket, resets the destination socket address to all
+zero bytes, deallocates the `struct tlsrpt_connection_t` and sets *pcon to
+`NULL`.
 
+.Parameters
+struct tlsrpt_connection_t** pcon::
+    Address of the pointer pointing to the connection object to be closed
+
+
+
+<<<
 
 === Delivery request
 
-The delivery request object is the central part of this library.
-It is composed via various function calls till it finally gets finished or cancelled.
+The delivery request object is the central part of this library. It is composed
+via various function calls till it finally gets finished or cancelled.
+
 
 ==== `tlsrpt_init_delivery_request`
-Parameters:::
- struct tlsrpt_dr_t** pdr::  Address of the pointer that will point to the delivery request
- struct tlsrpt_connection_t* con:: A pointer to the `struct tlsrpt_connection_t` object prepared earlier by a call to `tlsrpt_open`
- const char* domainname:: The recipient domain name of the email to be delivered
- const char* policyrecord:: The domain´s TLSRPT policy record retreived from the DNS service
 
-The `tlsrpt_init_delivery_request` function allocates and initializes the `struct tlsrpt_dr_t` object.
-The ressources it allocates must be freed by calling either `tlsrpt_finish_delivery_request` or `tlsrpt_cancel_delivery_request`.
+The `tlsrpt_init_delivery_request` function allocates and initializes the
+`struct tlsrpt_dr_t` object. The ressources it allocates must be freed by
+calling either `tlsrpt_finish_delivery_request` or
+`tlsrpt_cancel_delivery_request`.
+
+.Parameters
+struct tlsrpt_dr_t** pdr::
+    Address of the pointer that will point to the delivery request
+struct tlsrpt_connection_t* con::
+    A pointer to the `struct tlsrpt_connection_t` object prepared earlier by a
+    call to `tlsrpt_open`
+const char* domainname::
+    The recipient domain name of the email to be delivered
+const char* policyrecord::
+    The domain´s TLSRPT policy record retreived from the DNS service
+
 
 ==== `tlsrpt_finish_delivery_request`
-Parameters:::
- struct tlsrpt_dr_t** pdr::  Address of the pointer pointing to the delivery request to be finished and sent out
 
 The `tlsrpt_finish_delivery_request` function finishes the delivery request.
-`tlsrpt_finish_delivery_request` cleans up the ressources used by the delivery request `dr` and if no errors have occured sends it as a datagram to the TLSRPT collectd.
-It deallocates the `struct tlsrpt_dr_t` and sets *pdr to `NULL`.
+`tlsrpt_finish_delivery_request` cleans up the ressources used by the delivery
+request `dr` and if no errors have occured sends it as a datagram to the TLSRPT
+collectd. It deallocates the `struct tlsrpt_dr_t` and sets *pdr to `NULL`.
+
+.Parameters
+struct tlsrpt_dr_t** pdr::
+    Address of the pointer pointing to the delivery request to be finished and
+    sent out
+
 
 ==== `tlsrpt_cancel_delivery_request`
-Parameters:::
- struct tlsrpt_dr_t** pdr::  Address of the pointer pointing to the delivery request to be cancelled
 
-The `tlsrpt_cancel_delivery_request` function marks the delivery request as cancelled.
-This is done by an internal library "dummy error" `TLSRPT_ERR_TLSRPT_CANCELLED` which, like all errors, will prevent the delivery request from being sent out.
-The function then calls `tlsrpt_finish_delivery_request`, which will do all the clean-up of used ressources.
+The `tlsrpt_cancel_delivery_request` function marks the delivery request as
+cancelled. This is done by an internal library "dummy error"
+`TLSRPT_ERR_TLSRPT_CANCELLED` which, like all errors, will prevent the delivery
+request from being sent out. The function then calls
+`tlsrpt_finish_delivery_request`, which will do all the clean-up of used
+ressources.
 
+.Parameters
+struct tlsrpt_dr_t** pdr::
+    Address of the pointer pointing to the delivery request to be cancelled
+
+
+
+<<<
 
 === Policies
 
-Multiple policies can be part of one delivery request and can have different results provided in their `tlsrpt_finish_policy` calls.
-One delivery request can fail according to one policy but still be successful according to a different policy.
-Finishing a delivery request without any policies at all is considered an error and no datagram will be reported to the TLSRPT collectd.
+Multiple policies can be part of one delivery request and can have different
+results provided in their `tlsrpt_finish_policy` calls. One delivery request
+can fail according to one policy but still be successful according to a
+different policy. Finishing a delivery request without any policies at all is
+considered an error and no datagram will be reported to the TLSRPT collectd.
 
 Policies can not be nested!
-Calling `tlsrpt_init_policy` a second time without a call to `tlsrpt_finish_policy` inbetween will result in `TLSRPT_ERR_TLSRPT_NESTEDPOLICY`.
+
+Calling `tlsrpt_init_policy` a second time without a call to
+`tlsrpt_finish_policy` inbetween will result in
+`TLSRPT_ERR_TLSRPT_NESTEDPOLICY`.
+
 
 ==== `tlsrpt_init_policy`
-Parameters:::
- struct tlsrpt_dr_t* dr::  The delivery request for which to define a new policy
- tlsrpt_policy_type_t policy_type:: The type of the new policy
-* const char* policydomainname:: The domain name relevant for this policy, usually the same as the domain name used in `tlsrpt_init_delivery_request`, but can be different in some scenarios as mentioned in RFC 8460
 
-The `tlsrpt_init_policy` function initializes a new policy within an existing delivery request.
-A delivery request must contain at least one policy.
+The `tlsrpt_init_policy` function initializes a new policy within an existing
+delivery request. A delivery request must contain at least one policy. The
+policy must be properly completed by calls to some of the following functions
+and a final call to `tlsrpt_finish_policy`.
 
-The policy must be properly completed by calls to some of the following functions and a final call to `tlsrpt_finish_policy`.
+.Parameters
+struct tlsrpt_dr_t* dr::
+    The delivery request for which to define a new policy
+tlsrpt_policy_type_t policy_type::
+    The type of the new policy
+* const char* policydomainname::
+    The domain name relevant for this policy, usually the same as the domain
+    name used in `tlsrpt_init_delivery_request`, but can be different in some
+    scenarios as mentioned in RFC 8460
 
-NOTE: An unfinished policy after some properly finished policies will result in the whole delivery request datagram to fail and not being sent out at all, so the other already completed policies won´t be reported either!
+[NOTE]
+====
+An unfinished policy after some properly finished policies will result in the
+whole delivery request datagram to fail and not being sent out at all. Any other 
+already completed policies will not be reported either!
+====
+
 
 ==== `tlsrpt_finish_policy`
-Parameters:::
- struct tlsrpt_dr_t* dr::  The delivery request containing the policy to be finished
- tlsrpt_final_result_t final_result:: The final result of this delivery request regarding this policy
 
-The `tlsrpt_finish_policy` function finishes a policy within a delivery request.
-It frees all the ressources allocated by `tlsrpt_init_policy`.
-Every call to `tlsrpt_init_policy` must be matched by a call to `tlsrpt_finish_policy`!
+The `tlsrpt_finish_policy` function finishes a policy within a delivery
+request. It frees all the ressources allocated by `tlsrpt_init_policy`. Every
+call to `tlsrpt_init_policy` must be matched by a call to
+`tlsrpt_finish_policy`!
 
-NOTE: No plausibility checks are done by the library regarding the number of failures added to this policy and the final result.
-It is just as well possible to finish a poliy as `TLSRPT_FINAL_FAILURE` with no failures added at all, as it is possible to finish a poliy as `TLSRPT_FINAL_SUCCESS` with one or more failures added.
+.Parameters
+struct tlsrpt_dr_t* dr::
+    The delivery request containing the policy to be finished
+tlsrpt_final_result_t final_result::
+    The final result of this delivery request regarding this policy
+
+[NOTE]
+====
+No plausibility checks are done by the library regarding the number of failures
+added to this policy and the final result. It is just as well possible to
+finish a poliy as `TLSRPT_FINAL_FAILURE` with no failures added at all, as it
+is possible to finish a poliy as `TLSRPT_FINAL_SUCCESS` with one or more
+failures added.
+====
 
 
 ==== Policy details
-These functions are used to describe the policy and failures that might have occured during the delivery request.
-The definition of a policy including all required policy strings and MX host patterns is necessary even in case of successful delivery.
-Calls to `tlsrpt_add_delivery_request_failure` are not required when there is no failure to be reported.
 
-Calls to `tlsrpt_add_policy_string`, `tlsrpt_add_mx_host_pattern` and  `tlsrpt_add_delivery_request_failure` can be mixed arbitrarily if needed.
-They work internally each on their own memstream which gets closed and aggregated into the datagram only at the final call to `tlsrpt_finish_policy`.
+These functions are used to describe the policy and failures that might have
+occured during the delivery request. The definition of a policy including all
+required policy strings and MX host patterns is necessary even in case of
+successful delivery. Calls to `tlsrpt_add_delivery_request_failure` are not
+required when there is no failure to be reported.
+
+Calls to `tlsrpt_add_policy_string`, `tlsrpt_add_mx_host_pattern` and
+`tlsrpt_add_delivery_request_failure` can be mixed arbitrarily if needed. They
+work internally each on their own memstream which gets closed and aggregated
+into the datagram only at the final call to `tlsrpt_finish_policy`.
 
 
 ===== `tlsrpt_add_policy_string`
-Parameters:::
- struct tlsrpt_dr_t* dr::  The delivery request containing the policy to be defined
- const char* policy_string:: A policy string needed to define the policy according to RFC 8640
 
-The `tlsrpt_add_policy_string` function adds a policy string to describe the current policy.
-Multiple policy strings can be added within one policy.
+The `tlsrpt_add_policy_string` function adds a policy string to describe the
+current policy. Multiple policy strings can be added within one policy.
+
+.Parameters
+struct tlsrpt_dr_t* dr::
+    The delivery request containing the policy to be defined
+const char* policy_string::
+    A policy string needed to define the policy according to
+    https://www.rfc-editor.org/rfc/rfc8460[RFC 8640]
+
 
 ===== `tlsrpt_add_mx_host_pattern`
-Parameters:::
- struct tlsrpt_dr_t* dr::  The delivery request containing the policy to be defined
- const char* mx_host_pattern:: A MX host pattern needed to define the policy according to RFC 8640
 
-The `tlsrpt_add_mx_host_pattern` function adds a MX host pattern to the current policy.
-Multiple MX host patterns can be added within a policy.
+The `tlsrpt_add_mx_host_pattern` function adds a MX host pattern to the current
+policy. Multiple MX host patterns can be added within a policy.
+
+.Parameters
+struct tlsrpt_dr_t* dr::
+    The delivery request containing the policy to be defined
+const char* mx_host_pattern::
+    A MX host pattern needed to define the policy according to
+    https://www.rfc-editor.org/rfc/rfc8460[RFC 8640]
+
 
 ===== `tlsrpt_add_delivery_request_failure`
-Parameters:::
- struct tlsrpt_dr_t* dr::  The delivery request  containing the policy to be defined
- tlsrpt_failure_t failure_code:: The failure code, an enum
- const char* sending_mta_ip:: the sending MTA´s IP adress
- const char* receiving_mx_hostname::  the receiving MTA´s MX hostname
- const char* receiving_mx_helo:: the receiving MTA´s HELO response
- const char* receiving_ip:: the receiving MTA´s IP address
- const char* additional_information:: additional informations as defined in RFC 8640
- const char* failure_reason_code:: additional informations as defined in RFC 8640
 
-The `tlsrpt_add_delivery_request_failure` function adds a failure to the current policy.
-Multiple failures can be added within a policy.
+The `tlsrpt_add_delivery_request_failure` function adds a failure to the
+current policy. Multiple failures can be added within a policy. Some of the
+parameters may be NULL and in this case will be ommitted in the datagram.
 
-Some of the parameters may be NULL and in this case will be ommitted in the datagram.
+.Parameters
+struct tlsrpt_dr_t* dr::
+    The delivery request containing the policy to be defined
+tlsrpt_failure_t failure_code::
+    The failure code, an enum
+const char* sending_mta_ip::
+    The sending MTA´s IP adress
+const char* receiving_mx_hostname::
+    The receiving MTA´s MX hostname
+const char* receiving_mx_helo::
+    The receiving MTA´s HELO response
+const char* receiving_ip::
+    The receiving MTA´s IP address
+const char* additional_information::
+    Additional informations as defined in
+    https://www.rfc-editor.org/rfc/rfc8460[RFC 8640]
+const char* failure_reason_code::
+    Additional informations as defined in
+    https://www.rfc-editor.org/rfc/rfc8460[RFC 8640]
 
+
+<<<
 
 == Development functions
 
-In addition to the actual API in this section additional functions are documented which mainly are useful for development and performance testing.
+In addition to the actual API in this section additional functions are
+documented which mainly are useful for development and performance testing.
+
 
 === Chosing a different malloc implementation
-==== `tlsrpt_set_malloc_and_free`
-Parameters:::
- void* (*malloc_function)(size_t size):: A pointer to a function replacing `malloc`
- void (*free_function)(void *ptr):: A pointer to a function replacing `free`
 
-The `tlsrpt_set_malloc_and_free` function replaces the malloc implementation used within libtlsrpt.
-The replaced malloc is used within libtlsrpt only to allocate the `struct tlsrpt_connection_t` and `struct tlsrpt_dr_t` structures.
+==== `tlsrpt_set_malloc_and_free`
+
+The `tlsrpt_set_malloc_and_free` function replaces the malloc implementation
+used within libtlsrpt. The replaced malloc is used within libtlsrpt only to
+allocate the `struct tlsrpt_connection_t` and `struct tlsrpt_dr_t` structures.
 Other malloc calls from within the C standard library are not affected.
 
-NOTE: This function must be called before any of the allocating functions `tlsrpt_open` and `tlsrpt_init_delivery_request` is called! Otherwise one malloc implementation tries to free  a pointer allocated by a different malloc implementation.
+[NOTE]
+====
+This function must be called before any of the allocating functions
+`tlsrpt_open` and `tlsrpt_init_delivery_request` is called! Otherwise one
+malloc implementation tries to free  a pointer allocated by a different malloc
+implementation.
+====
+
+.Parameters
+void* (*malloc_function)(size_t size)::
+    A pointer to a function replacing `malloc`
+void (*free_function)(void *ptr)::
+    A pointer to a function replacing `free`
 
 
 === Controlling blocking behaviour of sendto
 
-The functions listed in this chapter change low-level details within the library.
-They are not needed for normal production code, but are useful for several development and testing purposes, for example to test high-load scenarios without losing datagrams.
+The functions listed in this chapter change low-level details within the
+library. They are not needed for normal production code, but are useful for
+several development and testing purposes, for example to test high-load
+scenarios without losing datagrams.
 
-NOTE: This is currently a global setting!
-If the need arises, this might be turned into a property of `struct tlsrpt_dr_t` in the future to have blocking and non-blocking delivery requests in the same program. This would need a change of the API of these two functions, but not of the productive API described above.
+[NOTE]
+.A global setting
+====
+Currently this is a global setting. If the need arises, this might be turned
+into a property of `struct tlsrpt_dr_t` in the future to have blocking and
+non-blocking delivery requests in the same program. This would need a change of
+the API of these two functions, but not of the productive API described above.
+====
+
 
 ==== `tlsrpt_set_blocking`
-The `tlsrpt_set_blocking` function changes the `sendto` call within `tlsrpt_finish_delivery_request` to be blocking.
-The default is non-blocking.
+
+The `tlsrpt_set_blocking` function changes the `sendto` call within
+`tlsrpt_finish_delivery_request` to be blocking. The default is non-blocking.
+
 
 ==== `tlsrpt_set_nonblocking`
-The `tlsrpt_set_nonblocking` function restores the `sendto` call within `tlsrpt_finish_delivery_request` to its default non-blocking behaviour.
+
+The `tlsrpt_set_nonblocking` function restores the `sendto` call within
+`tlsrpt_finish_delivery_request` to its default non-blocking behaviour.
+
 
 ==== `tlsrpt_get_socket`
-Parameters:::
- truct tlsrpt_connection_t* con:: A pointer to the `tlsrpt_connection_t` struct.
 
-The `tlsrpt_get_socket` function returns the socket file descriptor used within a `tlsrpt_connection_t`.
-This can be useful to set socket options.
+The `tlsrpt_get_socket` function returns the socket file descriptor used within
+a `tlsrpt_connection_t`. This can be useful to set socket options.
+
+.Parameters
+truct tlsrpt_connection_t* con::
+    A pointer to the `tlsrpt_connection_t` struct.
 
 
 === Error code inspection
-==== `tlsrpt_errno_from_error_code`
-Parameters:::
- int errorcode:: the error code returned from any of the tlsrpt C library API functions
 
-The `tlsrpt_errno_from_error_code` function returns the `errno` part of an errorcode.
-In case of internal library errors from the TLSRPT_ERR_TLSRPT block the returned value will be a high number to avoid clashes with existing errno values.
-I.e. `TLSRPT_ERR_TLSRPT_NESTEDPOLICY` is 10731 instead of 10031 to avoid the errno part being decoded as `EMLINK`.
+==== `tlsrpt_errno_from_error_code`
+
+The `tlsrpt_errno_from_error_code` function returns the `errno` part of an
+errorcode. In case of internal library errors from the TLSRPT_ERR_TLSRPT block
+the returned value will be a high number to avoid clashes with existing errno
+values. I.e. `TLSRPT_ERR_TLSRPT_NESTEDPOLICY` is 10731 instead of 10031 to
+avoid the errno part being decoded as `EMLINK`.
+
+.Parameters
+int errorcode::
+    The error code returned from any of the tlsrpt C library API functions
+
 
 ==== `tlsrpt_error_code_is_internal`
-Parameters:::
- int errorcode:: the error code returned from any of the tlsrpt C library API functions
 
-The `tlsrpt_error_code_is_internal` function returns if the error code is internal to the TLSRPT library.
-`tlsrpt_error_code_is_internal` returns 1 if the error code describes an error internal to the TLSRPT library.
-`tlsrpt_error_code_is_internal` returns 0 if the error code is a composed error code combined of the C library function and the call site within the TLSRPT library and the errno value resulting from the failed call into the C library.
+The `tlsrpt_error_code_is_internal` function returns if the error code is
+internal to the TLSRPT library. `tlsrpt_error_code_is_internal` returns 1 if
+the error code describes an error internal to the TLSRPT library.
+`tlsrpt_error_code_is_internal` returns 0 if the error code is a composed error
+code combined of the C library function and the call site within the TLSRPT
+library and the errno value resulting from the failed call into the C library.
+
+.Parameters
+int errorcode::
+    The error code returned from any of the tlsrpt C library API functions
+
 
 ==== `tlsrpt_strerror`
-Parameters:::
- int errorcode:: the error code returned from any of the tlsrpt C library API functions
 
-The `tlsrpt_strerror` function returns a static string describing the error.
-If the error is not an internal error (`tlsrpt_error_code_is_internal` returns 0 in that case), the text describes the C library function that gave an error and for C library functions that get called from different places within the TLSRPT library, the calling function is mentioned in the description.
-The actual error has to be retrieved from the C library via the `strerror` function or its altrnatives.
-The errno value to be passed into the `strerror` function must be extracted from the error code via the `tlsrpt_errno_from_error_code` function.
+The `tlsrpt_strerror` function returns a static string describing the error. If
+the error is not an internal error (`tlsrpt_error_code_is_internal` returns 0
+in that case), the text describes the C library function that gave an error and
+for C library functions that get called from different places within the TLSRPT
+library, the calling function is mentioned in the description. The actual error
+has to be retrieved from the C library via the `strerror` function or its
+altrnatives. The errno value to be passed into the `strerror` function must be
+extracted from the error code via the `tlsrpt_errno_from_error_code` function.
+
+.Parameters
+int errorcode::
+    The error code returned from any of the tlsrpt C library API functions
+
+
