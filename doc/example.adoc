@@ -1,0 +1,266 @@
+= TLSRPT c-Library Examples
+:doctype: article
+:keywords:
+:author: Boris Lohner
+:email: bl@sys4.de
+:subject: TLSRPT c-Library Examples
+:revnumber: 0.1
+:revdate: 17.03.2025
+:copyright: (C) sys4 AG
+:publisher: sys4 AG
+:lang: en
+:hyphens: en
+:encoding: UTF-8
+:pdf-version: 1.7
+:toc:
+:toclevels: 3
+:sectnums:
+:pagenums:
+:icons: image
+:source-highlighter: rouge
+:rouge-style: base16.solarized.dark
+
+<<<
+
+== General Remarks
+
+All examples given in this document need to be wrapped by `tlsrpt_open` and
+`tlsrpt_close`.
+
+The connection object can be reused and needs only be setup at program start or
+it can be opened and closed for each delivery attempt.
+
+Different MTA designs could lead to different choices about reusing the socket.
+
+Neither the library nor the Python daemons check for meaningfulness of the
+order and combination of library calls:
+
+* MX-Host patterns that are only defined for MTA-STS policies by
+  https://www.rfc-editor.org/rfc/rfc8460[RFC8460] can be added to all policy
+  types.
+* A policy can be finished with a successful result code although delivery
+  request failures were added for that policy.
+* A policy can be finished with a failure result code although no delivery
+  request failures were added for that policy.
+
+
+<<<
+
+== Examples
+
+
+=== Checking The Combined Result Code
+
+Most tlsrpt library functions return a combined result code. In case of success
+the result code is zero. In case of an error the
+`tlsrpt_error_code_is_internal` function can distinguish between internal
+errors and errors from libc.
+
+.Checking the combined result code
+[source, c]
+----
+struct tlsrpt_connection_t *con;
+res=tlsrpt_open(&con, SOCKET_NAME);
+  struct tlsrpt_dr_t *dr;
+  res = tlsrpt_init_delivery_request(&dr, con, domain, tlsrpt_record);
+    res = tlsrpt_init_policy(dr, TLSRPT_NO_POLICY_FOUND , NULL);
+    res = tlsrpt_finish_policy(dr, TLSRPT_FINAL_SUCCESS);
+  res = tlsrpt_finish_delivery_request(&dr);
+res=tlsrpt_close(&con);
+if(tlsrpt_error_code_is_internal(res)) {
+  printf("Internal libtlsrpt error number %d: %s\n", res, tlsrpt_strerror(res));
+} else {
+  int res_errno = tlsrpt_errno_from_error_code(res);
+  printf("External libtlsrpt error number %d : %s - errno is %ds: %s\n" , res, tlsrpt_strerror(res), res_errno, strerror(res_errno));
+}
+----
+
+
+[[tlsa-failures]]
+=== TLSA Failures Without MX Host Pattern
+
+Delivery request failures can only be added within a defined policy. Multiple
+policy string lines can be added. 
+
+.TLSA failures without MX host pattern
+[source, c]
+----
+struct tlsrpt_connection_t *con;
+res=tlsrpt_open(&con, SOCKET_NAME);
+  struct tlsrpt_dr_t *dr;
+  res = tlsrpt_init_delivery_request(&dr, con, domain, tlsrpt_record);
+    res = tlsrpt_init_policy(dr, TLSRPT_POLICY_TLSA , "company-y.example");
+    res = tlsrpt_add_policy_string(dr,"3 0 1 1F850A337E6DB9C609C522D136A475638CC43E1ED424F8EEC8513D747D1D085D");
+    res = tlsrpt_add_policy_string(dr,"3 0 1 12350A337E6DB9C6123522D136A475638CC43E1ED424F8EEC8513D747D1D1234");
+    res = tlsrpt_add_delivery_request_failure(dr, TLSRPT_CERTIFICATE_EXPIRED, "1.2.3.4", "mailin.example.com", "tes-ehlo.example.com", "11.22.33.55", "This is additional information", "999 TEST ERROR");
+    res = tlsrpt_finish_policy(dr, TLSRPT_FINAL_FAILURE);
+  res = tlsrpt_finish_delivery_request(&dr);
+res=tlsrpt_close(&con);
+----
+
+
+[[mta-sts-failures]]
+=== MTA-STS Failures With MX Host Pattern
+
+In addition to the policy strings multiple MX host patterns can be added within
+a policy. MX host patterns are only needed for MTA-STS policies. However the
+library and the tlsrpt tools do not enforce this and would put MX host patterns
+into the report for other policies as well.
+
+.MTA-STS failures with MX host pattern
+[source, c]
+----
+struct tlsrpt_connection_t *con;
+res=tlsrpt_open(&con, SOCKET_NAME);
+  struct tlsrpt_dr_t *dr; 
+  res = tlsrpt_init_delivery_request(&dr, con, domain, tlsrpt_record);
+    res = tlsrpt_init_policy(dr, TLSRPT_POLICY_STS , "company-y.example");
+      res = tlsrpt_add_policy_string(dr,"version: STSv1");
+      res = tlsrpt_add_policy_string(dr,"mode: testing");
+      res = tlsrpt_add_policy_string(dr,"mx: *.mail.company-y.example");
+      res = tlsrpt_add_policy_string(dr,"max_age: 86400");
+      res = tlsrpt_add_mx_host_pattern(dr,"*.mail.company-y.example");
+      res = tlsrpt_add_mx_host_pattern(dr,"*.mail2.company-y.example");
+      res = tlsrpt_add_delivery_request_failure(dr, TLSRPT_STS_POLICY_INVALID, "1.2.3.4", "mailin.example.com", "test-ehlo.example.com", "11.22.33.44", "This is additional information", "999 TEST ERROR");
+      res = tlsrpt_add_delivery_request_failure(dr, TLSRPT_STS_WEBPKI_INVALID, "1.2.3.5", "mailin.example.com", "test-ehlo.example.com", "11.22.33.55", "This is additional information", "999 TEST ERROR");
+    res = tlsrpt_finish_policy(dr, TLSRPT_FINAL_FAILURE);
+  res = tlsrpt_finish_delivery_request(&dr);
+res=tlsrpt_close(&con);
+----
+
+
+=== Other Failures
+
+Delivery request failures if neither a DANE nor MTA-STS Policy could be found
+can be reported within a policy definiton of `TLSRPT_NO_POLICY_FOUND`.
+
+.Other failures
+[source, c]
+----
+struct tlsrpt_connection_t *con;
+res=tlsrpt_open(&con, SOCKET_NAME);
+  struct tlsrpt_dr_t *dr;
+  res = tlsrpt_init_delivery_request(&dr, con, domain, tlsrpt_record);
+    res = tlsrpt_init_policy(dr, TLSRPT_NO_POLICY_FOUND , NULL);
+    res = tlsrpt_add_delivery_request_failure(dr, TLSRPT_VALIDATION_FAILURE, "192.168.25.25", NULL, NULL, "11.22.33.55", "Something unexpected happened", "http://www.google.com/");
+    res = tlsrpt_finish_policy(dr, TLSRPT_FINAL_FAILURE);
+  res = tlsrpt_finish_delivery_request(&dr);
+res=tlsrpt_close(&con);
+----
+
+
+=== Multiple Policies
+
+Multiple policies must be defined one after the other. This is example
+<<tlsa-failures>> and <<mta-sts-failures>> combined.
+
+.Multiple policies
+[source, c]
+----
+struct tlsrpt_connection_t *con;
+res=tlsrpt_open(&con, SOCKET_NAME);
+  struct tlsrpt_dr_t *dr; 
+  res = tlsrpt_init_delivery_request(&dr, con, domain, tlsrpt_record);
+    res = tlsrpt_init_policy(dr, TLSRPT_POLICY_STS , "company-y.example");
+    res = tlsrpt_add_policy_string(dr,"version: STSv1");
+    res = tlsrpt_add_policy_string(dr,"mode: testing");
+    res = tlsrpt_add_policy_string(dr,"mx: *.mail.company-y.example");
+    res = tlsrpt_add_policy_string(dr,"max_age: 86400");
+    res = tlsrpt_add_mx_host_pattern(dr,"*.mail.company-y.example");
+    res = tlsrpt_add_mx_host_pattern(dr,"*.mail2.company-y.example");
+    res = tlsrpt_add_delivery_request_failure(dr, TLSRPT_STS_POLICY_INVALID, "1.2.3.4", "mailin.example.com", "test-ehlo.example.com", "11.22.33.44", "This is additional information", "999 TEST ERROR");
+    res = tlsrpt_add_delivery_request_failure(dr, TLSRPT_STS_WEBPKI_INVALID, "1.2.3.5", "mailin.example.com", "test-ehlo.example.com", "11.22.33.55", "This is additional information", "999 TEST ERROR");
+    res = tlsrpt_finish_policy(dr, TLSRPT_FINAL_FAILURE);
+    res = tlsrpt_init_policy(dr, TLSRPT_POLICY_TLSA , "company-y.example");
+    res = tlsrpt_add_policy_string(dr,"3 0 1 1F850A337E6DB9C609C522D136A475638CC43E1ED424F8EEC8513D747D1D085D");
+    res = tlsrpt_add_policy_string(dr,"3 0 1 12350A337E6DB9C6123522D136A475638CC43E1ED424F8EEC8513D747D1D1234"); 
+    res = tlsrpt_add_delivery_request_failure(dr, TLSRPT_CERTIFICATE_EXPIRED, "1.2.3.4", "mailin.example.com", "tes-ehlo.example.com", "11.22.33.55", "This is additional information", "999 TEST ERROR");
+    res = tlsrpt_finish_policy(dr, TLSRPT_FINAL_FAILURE);
+  res = tlsrpt_finish_delivery_request(&dr);
+res=tlsrpt_close(&con);
+----
+
+
+=== Policy Block Without Failures
+
+When no failures are added within a policy block, that policy will be reported
+as successful delivery.
+
+.Policy block without failures
+[source, c]
+----
+struct tlsrpt_connection_t *con;
+res=tlsrpt_open(&con, SOCKET_NAME);
+  struct tlsrpt_dr_t *dr; 
+  res = tlsrpt_init_delivery_request(&dr, con, domain, tlsrpt_record);
+    res = tlsrpt_init_policy(dr, TLSRPT_POLICY_STS , "company-y.example");
+    res = tlsrpt_add_policy_string(dr,"version: STSv1");
+    res = tlsrpt_add_policy_string(dr,"mode: testing and will contain  no failures");
+    res = tlsrpt_add_policy_string(dr,"mx: *.mail.company-y.example");
+    res = tlsrpt_add_policy_string(dr,"max_age: 86400");
+    res = tlsrpt_add_mx_host_pattern(dr,"*.mail.company-y.example");
+    res = tlsrpt_finish_policy(dr, TLSRPT_FINAL_SUCCESS);
+  res = tlsrpt_finish_delivery_request(&dr);
+res=tlsrpt_close(&con);
+----
+
+
+=== Multiple Policies Without Failures
+
+Multiple policies must be defined one after the other. Both policies are marked
+as successful.
+
+.Multiple policies without failures
+[source, c]
+----
+struct tlsrpt_connection_t *con;
+res=tlsrpt_open(&con, SOCKET_NAME);
+  struct tlsrpt_dr_t *dr; 
+  res = tlsrpt_init_delivery_request(&dr, con, domain, tlsrpt_record);
+    res = tlsrpt_init_policy(dr, TLSRPT_POLICY_STS , "company-y.example");
+    res = tlsrpt_add_policy_string(dr,"version: STSv1");
+    res = tlsrpt_add_policy_string(dr,"mode: testing");
+    res = tlsrpt_add_policy_string(dr,"mx: *.mail.company-y.example");
+    res = tlsrpt_add_policy_string(dr,"max_age: 86400");
+    res = tlsrpt_add_mx_host_pattern(dr,"*.mail.company-y.example");
+    res = tlsrpt_add_mx_host_pattern(dr,"*.mail2.company-y.example");
+    res = tlsrpt_finish_policy(dr, TLSRPT_FINAL_SUCCESS);
+    res = tlsrpt_init_policy(dr, TLSRPT_POLICY_TLSA , "company-y.example");
+    res = tlsrpt_add_policy_string(dr,"3 0 1 1F850A337E6DB9C609C522D136A475638CC43E1ED424F8EEC8513D747D1D085D");
+    res = tlsrpt_add_policy_string(dr,"3 0 1 12350A337E6DB9C6123522D136A475638CC43E1ED424F8EEC8513D747D1D1234"); 
+    res = tlsrpt_finish_policy(dr, TLSRPT_FINAL_SUCCESS);
+  res = tlsrpt_finish_delivery_request(&dr);
+res=tlsrpt_close(&con);
+----
+
+
+=== Multiple Policies With Success and Failure Mixed
+
+Multiple policies must be defined one after the other. Here one policy fails,
+but the other allowed for successful delivery.
+
+.Multiple policies with success and failure mixed
+[source, c]
+----
+struct tlsrpt_connection_t *con;
+res=tlsrpt_open(&con, SOCKET_NAME);
+  struct tlsrpt_dr_t *dr; 
+  res = tlsrpt_init_delivery_request(&dr, con, domain, tlsrpt_record);
+    res = tlsrpt_init_policy(dr, TLSRPT_POLICY_STS , "company-y.example");
+    res = tlsrpt_add_policy_string(dr,"version: STSv1");
+    res = tlsrpt_add_policy_string(dr,"mode: testing");
+    res = tlsrpt_add_policy_string(dr,"mx: *.mail.company-y.example");
+    res = tlsrpt_add_policy_string(dr,"max_age: 86400");
+    res = tlsrpt_add_mx_host_pattern(dr,"*.mail.company-y.example");
+    res = tlsrpt_add_mx_host_pattern(dr,"*.mail2.company-y.example");
+    res = tlsrpt_add_delivery_request_failure(dr, TLSRPT_STS_POLICY_INVALID, "1.2.3.4", "mailin.example.com", "test-ehlo.example.com", "11.22.33.44", "This is additional information", "999 TEST ERROR");
+    res = tlsrpt_add_delivery_request_failure(dr, TLSRPT_STS_WEBPKI_INVALID, "1.2.3.5", "mailin.example.com", "test-ehlo.example.com", "11.22.33.55", "This is additional information", "999 TEST ERROR");
+    res = tlsrpt_finish_policy(dr, TLSRPT_FINAL_FAILURE);
+    res = tlsrpt_init_policy(dr, TLSRPT_POLICY_TLSA , "company-y.example");
+    res = tlsrpt_add_policy_string(dr,"3 0 1 1F850A337E6DB9C609C522D136A475638CC43E1ED424F8EEC8513D747D1D085D");
+    res = tlsrpt_add_policy_string(dr,"3 0 1 12350A337E6DB9C6123522D136A475638CC43E1ED424F8EEC8513D747D1D1234"); 
+    res = tlsrpt_finish_policy(dr, TLSRPT_FINAL_SUCCESS);
+  res = tlsrpt_finish_delivery_request(&dr);
+res=tlsrpt_close(&con);
+----
+
