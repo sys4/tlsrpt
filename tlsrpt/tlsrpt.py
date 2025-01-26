@@ -41,10 +41,10 @@ import shlex
 
 logger = logging.getLogger(__name__)
 
-from pytlsrpt.utility import *
-from pytlsrpt.config import options_from_cmd_env_cfg
-from pytlsrpt import randpool
-from pytlsrpt import plugins
+from tlsrpt.utility import *
+from tlsrpt.config import options_from_cmd_env_cfg
+from tlsrpt import randpool
+from tlsrpt import plugins
 
 # Constants
 DB_Purpose_Suffix = "-devel-2024-10-28"

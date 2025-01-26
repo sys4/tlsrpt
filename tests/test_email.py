@@ -19,7 +19,7 @@
 
 import unittest
 import email.utils
-from pytlsrpt import tlsrpt
+from tlsrpt import tlsrpt
 
 class MyTestCase(unittest.TestCase):
     def test_email_headers(self):

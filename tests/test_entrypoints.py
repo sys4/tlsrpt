@@ -18,7 +18,7 @@
 #
 
 import unittest
-from pytlsrpt import plugins
+from tlsrpt import plugins
 
 class MyTestCase(unittest.TestCase):
     def plugin_entrypoint(self, group, url, expected_typename):

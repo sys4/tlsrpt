@@ -25,7 +25,7 @@ import os
 import sys
 import tempfile
 
-from pytlsrpt import config
+from tlsrpt import config
 
 ConfigTest = collections.namedtuple("ConfigTest",
                                     ["nr",

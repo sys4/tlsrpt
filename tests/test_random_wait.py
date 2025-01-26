@@ -18,7 +18,7 @@
 #
 
 import unittest
-from pytlsrpt import utility   # unit under test
+from tlsrpt import utility   # unit under test
 import datetime
 
 

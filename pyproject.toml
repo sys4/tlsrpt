@@ -3,7 +3,7 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
-name = "pytlsrpt"
+name = "tlsrpt"
 version = "0.5.0rc1"
 authors = [
   { name="sys4 AG", email="info@sys4.de" },
@@ -35,19 +35,19 @@ dev = [
 "Bug Tracker" = "https://github.com/sys4/tlsrpt/issues"
 
 [project.scripts]
-tlsrpt-fetcher = "pytlsrpt.tlsrpt:tlsrpt_fetcher_main"
-tlsrpt-collectd = "pytlsrpt.tlsrpt:tlsrpt_collectd_main"
-tlsrpt-reportd = "pytlsrpt.tlsrpt:tlsrpt_reportd_main"
+tlsrpt-fetcher = "tlsrpt.tlsrpt:tlsrpt_fetcher_main"
+tlsrpt-collectd = "tlsrpt.tlsrpt:tlsrpt_collectd_main"
+tlsrpt-reportd = "tlsrpt.tlsrpt:tlsrpt_reportd_main"
 
 [project.entry-points."tlsrpt.collectd"]
-sqlite = "pytlsrpt.tlsrpt:TLSRPTCollectdSQLite"
-dummy = "pytlsrpt.tlsrpt:DummyCollectd"
+sqlite = "tlsrpt.tlsrpt:TLSRPTCollectdSQLite"
+dummy = "tlsrpt.tlsrpt:DummyCollectd"
 
 [project.entry-points."tlsrpt.fetcher"]
-sqlite = "pytlsrpt.tlsrpt:TLSRPTFetcherSQLite"
+sqlite = "tlsrpt.tlsrpt:TLSRPTFetcherSQLite"
 
 [tool.hatch.build]
 only-packages = false
 
 [tool.hatch.build.targets.wheel]
-packages = ["pytlsrpt"]
+packages = ["tlsrpt"]
